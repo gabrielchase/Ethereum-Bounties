@@ -5,7 +5,7 @@ pragma solidity ^0.5.0;
 contract Bounties {
     enum BountyStatus { CREATED, ACCEPTED, CANCELLED }
     Bounty[] public bounties;
-    mapping(uint => Fulfillment[]) fulfillments;
+    mapping(uint => Fulfillment[]) public fulfillments;
 
     struct Bounty {
         address payable issuer;
@@ -27,7 +27,7 @@ contract Bounties {
 
     constructor() public {}
 
-    function issueBounty(string memory _data, uint64 _deadline)
+    function issueBounty(string memory _data, uint _deadline)
         public
         payable
         hasValue()
@@ -61,6 +61,7 @@ contract Bounties {
         notIssuer(bountyId)
         hasStatus(bountyId, BountyStatus.CREATED)
         isBeforeDeadline(bountyId)
+        returns (uint)
     {
         fulfillments[bountyId].push(Fulfillment({
             accepted: false,
@@ -72,6 +73,8 @@ contract Bounties {
         uint fulfillmentId = fulfillments[bountyId].length-1;
 
         emit BountyFulfilled({ bountyId: bountyId, fulfillmentId: fulfillmentId, fulfiller: msg.sender, data: _data, date: now });
+
+        return (fulfillmentId);
     }
 
     function cancelBounty(uint bountyId)
@@ -84,15 +87,14 @@ contract Bounties {
         Bounty storage bounty = bounties[bountyId];
         bounty.status = BountyStatus.CANCELLED;
         bounty.cancelledOn = now;
-        
+
         // Transfer funds back to bounty issuer
         bounty.issuer.transfer(bounty.reward);
-        
+
         emit BountyCancelled(bountyId, bounty.cancelledOn);
     }
-        
 
-    function getNumberOBounties() public view returns (uint) {
+    function getNumberOfBounties() public view returns (uint) {
         return bounties.length;
     }
 
@@ -100,13 +102,12 @@ contract Bounties {
         return fulfillments[bountyId].length;
     }
 
-    function showBountyFulfillment(uint bountyId, uint fulfillmentId)
-        public
-        view
-        returns (bool, address, string memory, uint)
-    {
-        Fulfillment memory fulfillment = fulfillments[bountyId][fulfillmentId];
-        return (fulfillment.accepted, fulfillment.fulfiller, fulfillment.data, fulfillment.date );
+    function getBountyStatus(uint bountyId) public view returns (string memory) {
+        Bounty memory bounty = bounties[bountyId];
+
+        if (bounty.status == BountyStatus.CREATED) return "CREATED";
+        if (bounty.status == BountyStatus.ACCEPTED) return "ACCEPTED";
+        if (bounty.status == BountyStatus.CANCELLED) return "CANCELLED";
     }
 
     function acceptFulfillment(uint bountyId, uint fulfillmentId)
