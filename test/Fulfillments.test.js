@@ -14,6 +14,9 @@ contract('Fulfillments', (accounts) => {
     beforeEach(async () => {
         bountiesInstance = await Bounties.new()
         bounty = await bountiesInstance.issueBounty('requirements', VERY_FAR_DATE, { from: accounts[0], value: ONE_ETH })
+        let contractBalance = await web3.eth.getBalance(bountiesInstance.address)
+        
+        assert.equal(ONE_ETH, contractBalance)
     })
 
     it('should create a fulfillment when fulfillBounty is called by another account', async () => {
@@ -74,10 +77,44 @@ contract('Fulfillments', (accounts) => {
     })
 
     it('fulfillBounty should return the fulfillment index', async () => {
-
         const result = await bountiesInstance.fulfillBounty.call(0, 'i fulfilled the bounty!', { from: accounts[1] })
         
         assert.equal(0, result)
+    })
+
+    it('bounty issues can acceptFulfillment', async () => {
+        await bountiesInstance.fulfillBounty(0, 'i fulfilled the bounty!', { from: accounts[1] }) 
+        
+        const fulfillersOldBalance = await web3.eth.getBalance(accounts[1])
+        const tx = await bountiesInstance.acceptFulfillment(0, 0, { from: accounts[0] })
+        const bountyStatus = await bountiesInstance.getBountyStatus(0)
+        const bounty = await bountiesInstance.bounties(0)
+        const fulfillment = await bountiesInstance.fulfillments(0, 0)
+
+        assert.equal('FulfillmentAccepted', tx.logs[0].event)
+        assert.equal('ACCEPTED', bountyStatus)
+        assert.equal(0, bounty.acceptedFulfillmentId)
+        assert.notEqual(0, bounty.fulfilledOn)
+        assert.equal(true, fulfillment.accepted)
+
+        // Check that fulfillment.fulfiller's account balance has increased by bounty.reward
+        const fulfillersNewBalance = await web3.eth.getBalance(accounts[1])
+        
+        assert.equal(ONE_ETH, parseInt(fulfillersNewBalance) - parseInt(fulfillersOldBalance))
+
+        const bountyNewBalance = await web3.eth.getBalance(bountiesInstance.address)
+
+        assert.equal(0, bountyNewBalance)
+    })
+
+    it('should fail a user that is not the bounty issuer tries to acceptFulfillment', async () => {
+        try {
+            // Add a faulfillment
+            await bountiesInstance.fulfillBounty(0, 'i fulfilled the bounty!', { from: accounts[1] })
+            await bountiesInstance.acceptFulfillment(0, 0, { from: accounts[1] })
+        } catch (error) {
+            assert(error)
+        }
     })
 
     it('should fail a fulfillment when a bounty is fulfilled at a later date than a deadline', async () => {
